@@ -59,7 +59,7 @@ nano ~/mysql-dr/docker-compose.yml
 ```
 
 ```yaml
-version: '3.8'
+version: '3.3'
 services:
   mysql:
     image: mysql:8.0
@@ -192,7 +192,7 @@ Set-Location "C:\mysql-dr"
 
 Créez le fichier `C:\mysql-dr\docker-compose.yml` :
 ```yaml
-version: '3.8'
+version: '3.3'
 services:
   mysql:
     image: mysql:8.0
