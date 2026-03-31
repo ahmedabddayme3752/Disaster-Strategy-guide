@@ -437,7 +437,8 @@ mysql -u root -p -e "
     MASTER_USER='replicateur',
     MASTER_PASSWORD='<MOT_DE_PASSE_FORT>',
     MASTER_AUTO_POSITION=1,
-    MASTER_SSL=1;
+    MASTER_SSL=0,
+    GET_MASTER_PUBLIC_KEY=1;
   START SLAVE;
 "
 
@@ -551,7 +552,8 @@ rpl_semi_sync_slave_enabled = 1
   "CHANGE MASTER TO MASTER_HOST='<IP_VM3_PROD>', ^
    MASTER_USER='replicateur', ^
    MASTER_PASSWORD='<MDP>', ^
-   MASTER_AUTO_POSITION=1; START SLAVE;"
+   MASTER_AUTO_POSITION=1, ^
+   MASTER_SSL=0, GET_MASTER_PUBLIC_KEY=1; START SLAVE;"
 
 :: Vérification
 "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p -e ^
@@ -639,7 +641,9 @@ mysql -u root -p -e "
     MASTER_HOST='<IP_DR_CLICK>',
     MASTER_USER='replicateur',
     MASTER_PASSWORD='<MOT_DE_PASSE>',
-    MASTER_AUTO_POSITION=1;
+    MASTER_AUTO_POSITION=1,
+    MASTER_SSL=0,
+    GET_MASTER_PUBLIC_KEY=1;
   START SLAVE;
 "
 # Attendre que Seconds_Behind_Master = 0
