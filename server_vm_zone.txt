@@ -1,0 +1,23 @@
+
+
+monotordr@monotordr-virtual-machine:zone 1 (Zone 1 — Monitoring : Prometheus, Grafana, alertes — observabilité uniquement this si for monitering )
+  192.168.1.65
+  user: monotordr
+  password: [PASSWORD]
+
+(même ville) primlary and secondary but very far from each other or on diffnntert sever local 
+  primbackupdr@primbackupdr-virtual-machine:zone 2
+    192.168.1.66
+    user: primbackupdr
+    password: [PASSWORD]
+  secbackupdr@secbackupdr-virtual-machine:zone 3
+    192.168.1.64
+    user: secbackupdr
+    password: [PASSWORD]
+
+remote dr Zone 4 we will use it later 
+
+
+Descrption about the two databsa mysql (pelniged and click )
+for pelniged his database is on machine physical windows 10 address : [10.168.2.34] we have only database test it we will use it for now  
+for click his database is on machine  ubuntu  address : [192.168.1.241] we have two database on this machine one for test  and one for production we will now  use test database . 
