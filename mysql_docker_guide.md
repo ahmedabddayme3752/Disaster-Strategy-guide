@@ -149,49 +149,7 @@ SHOW SLAVE STATUS\G
 
 Zone 1 n'accueille **pas** MySQL. Elle est dédiée au monitoring de la réplication sur Zone 2 et Zone 3.
 
-### A. Installer Prometheus + mysqld_exporter
-
-```bash
-# Sur Zone 1 uniquement
-sudo apt update
-sudo apt install -y prometheus
-
-# Installer mysqld_exporter pour surveiller les MySQL des Zones 2 et 3
-wget https://github.com/prometheus/mysqld_exporter/releases/download/v0.15.1/mysqld_exporter-0.15.1.linux-amd64.tar.gz
-tar xf mysqld_exporter*.tar.gz
-sudo mv mysqld_exporter*/mysqld_exporter /usr/local/bin/
-```
-
-### B. Configurer `prometheus.yml` pour surveiller Zone 2 et Zone 3
-
-```yaml
-# /etc/prometheus/prometheus.yml
-scrape_configs:
-  - job_name: 'mysql_zone2_primary'
-    static_configs:
-      - targets: ['192.168.1.66:9104']
-        labels:
-          zone: 'zone2'
-          role: 'primary'
-
-  - job_name: 'mysql_zone3_standby'
-    static_configs:
-      - targets: ['192.168.1.64:9104']
-        labels:
-          zone: 'zone3'
-          role: 'standby'
-```
-
-### C. Créer les utilisateurs monitoring sur Zone 2 et Zone 3
-
-*À exécuter sur chaque serveur MySQL (Zone 2 et Zone 3) :*
-```bash
-sudo docker exec -it mysql-server mysql -u root -pRootPassword123! -e "
-CREATE USER 'prometheus'@'192.168.1.65' IDENTIFIED BY 'MonitorPass2026!';
-GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'prometheus'@'192.168.1.65';
-FLUSH PRIVILEGES;
-"
-```
+> ➡️ **Veuillez consulter le fichier `05_monitoring_guide.md`** pour installer Prometheus et Grafana proprement via Docker sur cette zone. N'utilisez pas `apt install prometheus`, qui peut causer des conflits d'utilisateurs.
 
 ---
 
