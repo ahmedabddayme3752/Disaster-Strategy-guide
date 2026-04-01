@@ -18,6 +18,6 @@
 
 ## 4. Validation & Monitoring
 - [ ] Installer `mysqld_exporter` sur les 4 instances DR
-- [ ] Tester l'insertion de données sur Click et voir la réplication en cascade (Source ➡️ Z2 ➡️ Z3)
-- [ ] Tester l'insertion de données sur Pleniged et voir la réplication en cascade (Source ➡️ Z2 ➡️ Z3)
+- [ ] Tester l'insertion sur Click (Source ➡️ Z2 et Z3)
+- [ ] Tester l'insertion sur Pleniged (Source ➡️ Z2 et Z3)
 - [ ] Vérifier les graphiques sur Zone 1 (Port 3000)

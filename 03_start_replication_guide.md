@@ -4,29 +4,64 @@ Ce guide explique comment connecter vos serveurs DR (Zone 2 et Zone 3) aux sourc
 
 ---
 
+## 🏗️ Étape 0 — Initialisation avec données réelles (Dump / Restore)
+
+Si vos bases de production contiennent déjà des données (comme `clickTest`), vous devez faire un **Dump** sur la source et le restaurer sur le DR avant de lancer la réplication.
+
+### A. Sur le serveur de Production (Source)
+Exécutez la commande pour exporter la base vers un fichier SQL :
+```bash
+# Exemple pour Click
+mysqldump -u nio -p --databases clickTest --single-transaction --routines --triggers --set-gtid-purged=ON --no-tablespaces > clickTest_dump.sql
+```
+> [!TIP]
+> L'option `--no-tablespaces` est utilisée pour garantir l'indépendance vis-à-vis du stockage physique du serveur source et éviter les erreurs de privilèges `PROCESS`.
+
+### B. Transférer le fichier vers les serveurs DR
+Utilisez `scp` pour envoyer le fichier vers Zone 2 et Zone 3 :
+```bash
+scp clickTest_dump.sql primbackupdr@192.168.1.66:~/mysql-dr/
+```
+
+### C. Sur le serveur DR (Zone 2 ou 3)
+Importez le fichier directement dans le conteneur concerné (Port 3306 ou 3307) :
+```bash
+# 1. Nettoyage de l'état précédent
+sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "STOP SLAVE; RESET SLAVE ALL; RESET MASTER;"
+
+# 2. Importer les données
+cat clickTest_dump.sql | sudo docker exec -i mysql-click mysql -u root -pRootPassword123!
+
+# 3. Lancement de la réplication (Astuce : Utilisez ' ' pour éviter l'erreur "!")
+set +H
+sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e 'CHANGE MASTER TO MASTER_HOST="192.168.1.241", MASTER_USER="replicator", MASTER_PASSWORD="ReplicaPass2026!", MASTER_AUTO_POSITION=1; START SLAVE;'
+```
+
+---
+
 ## Étape 1 — Connexion de la Zone 2 (Primary DR) aux Sources
 
 Sur **Zone 2** (`192.168.1.66`), nous allons connecter les deux conteneurs indépendamment.
 
 ### A. Connecter Click (Port 3306)
 ```bash
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "
+sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e '
 -- Activer le plugin semi-sync côté esclave
-INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
+INSTALL PLUGIN rpl_semi_sync_slave SONAME "semisync_slave.so";
 SET PERSIST rpl_semi_sync_slave_enabled = 1;
 
 -- Pointer vers la source Click
 CHANGE MASTER TO
-  MASTER_HOST='192.168.1.241',
-  MASTER_USER='replicator',
-  MASTER_PASSWORD='ReplicaPass2026!',
+  MASTER_HOST="192.168.1.241",
+  MASTER_USER="replicator",
+  MASTER_PASSWORD="ReplicaPass2026!",
   MASTER_AUTO_POSITION=1,
   MASTER_SSL=0,
   GET_MASTER_PUBLIC_KEY=1;
 
 START SLAVE;
 SHOW SLAVE STATUS\G
-"
+'
 ```
 
 ### B. Connecter Pleniged (Port 3307)
@@ -94,6 +129,20 @@ START SLAVE;
 SHOW SLAVE STATUS\G
 "
 ```
+
+---
+
+## 💡 Astuce Bash : Gestion des mots de passe avec "!"
+
+Si votre mot de passe contient un point d'exclamation (ex: `ReplicaPass2026!`), Bash peut générer une erreur `event not found`.
+
+**Solutions :**
+1. Utilisez des **guillemets simples ` ' `** autour de tout le bloc `-e` :
+   `mysql -e 'CHANGE MASTER TO ... MASTER_PASSWORD="votre_mdp!";'`
+2. Désactivez l'expansion d'historique avant de lancer la commande :
+   ```bash
+   set +H
+   ```
 
 ---
 

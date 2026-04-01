@@ -16,6 +16,22 @@
 
 ---
 
+## ⚡ PRÉREQUIS CRUCIAL : Activer les GTID (Mode Natif)
+Si vous n'utilisez pas Docker sur la source mais une installation standard (Native), vous **devez** activer les GTID pour que le DR fonctionne :
+
+1. Éditez `/etc/mysql/mysql.conf.d/mysqld.cnf` :
+```ini
+[mysqld]
+server-id                = 10
+log_bin                  = /var/log/mysql/mysql-bin.log
+binlog_format            = ROW
+gtid_mode                = ON
+enforce_gtid_consistency  = ON
+```
+2. Redémarrez MySQL : `sudo systemctl restart mysql`.
+
+---
+
 ## MACHINE 1 — Click (Ubuntu, 192.168.1.241)
 
 ### Étape 0 — Vérifier si Docker est déjà installé
@@ -144,10 +160,14 @@ CREATE TABLE IF NOT EXISTS dr_test (
   message VARCHAR(100),
   created_at DATETIME DEFAULT NOW()
 );
-INSERT INTO dr_test (message) VALUES ('Test initial Click DR - $(date)');
-SELECT * FROM dr_test;
-"
+### Étape 7 — Exporter la base réelle pour le DR (Dump)
+Si vous avez déjà des données dans `clickTest`, exportez-les proprement :
+```bash
+# Exportation sans tablespaces pour la compatibilité
+mysqldump -u nio -p --databases clickTest --single-transaction --routines --triggers --set-gtid-purged=ON --no-tablespaces > clickTest_dump.sql
 ```
+Envoyez le fichier `clickTest_dump.sql` à Ahmed.
+
 
 ---
 
@@ -265,8 +285,13 @@ New-NetFirewallRule `
 ### Étape 7 — Insérer des données de test
 
 ```powershell
-docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "USE pleniged_test; CREATE TABLE IF NOT EXISTS dr_test (id INT AUTO_INCREMENT PRIMARY KEY, message VARCHAR(100), created_at DATETIME DEFAULT NOW()); INSERT INTO dr_test (message) VALUES ('Test initial Pleniged DR'); SELECT * FROM dr_test;"
+### Étape 8 — Exporter la base réelle pour le DR (Dump)
+Sur Windows, utilisez la commande suivante pour exporter vos bases :
+```powershell
+& "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe" -u root -p --databases pleniged_test --single-transaction --routines --triggers --set-gtid-purged=ON --no-tablespaces --result-file="C:\mysql-dr\pleniged_dump.sql"
 ```
+Envoyez le fichier `pleniged_dump.sql` à Ahmed.
+
 
 ---
 
