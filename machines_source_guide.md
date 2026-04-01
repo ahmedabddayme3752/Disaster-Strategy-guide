@@ -112,7 +112,7 @@ sudo docker ps   # Vérifier que le statut est "Up" et NON "Restarting"
 sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "
 -- Utilisateur de réplication
 CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!';
-GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replicator'@'%';
 
 -- Activer Semi-Sync Primary
 INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so';
@@ -237,7 +237,7 @@ docker ps   # Vérifier que le statut est "Up"
 > ⚠️ Sur Windows, le plugin `.dll` est utilisé automatiquement par MySQL dans le conteneur Linux (l'image Docker est toujours Linux !), donc on utilise `.so` comme sur Ubuntu.
 
 ```powershell
-docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!'; GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%'; INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'; SET PERSIST rpl_semi_sync_master_enabled = 1; SET PERSIST rpl_semi_sync_master_timeout = 10000; FLUSH PRIVILEGES; SHOW MASTER STATUS;"
+docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!'; GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replicator'@'%'; INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'; SET PERSIST rpl_semi_sync_master_enabled = 1; SET PERSIST rpl_semi_sync_master_timeout = 10000; FLUSH PRIVILEGES; SHOW MASTER STATUS;"
 ```
 
 > 📋 **Notez les valeurs** de `SHOW MASTER STATUS` (`File` et `Position`) — à transmettre à Ahmed.

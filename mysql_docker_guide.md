@@ -78,7 +78,7 @@ sudo docker ps   # Vérifiez que le statut est "Up" et non "Restarting"
 sudo docker exec -it mysql-server mysql -u root -pRootPassword123! -e "
 -- Créer l'utilisateur de réplication
 CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!';
-GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replicator'@'%';
 
 -- Activer la réplication semi-synchrone coté Primary
 INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so';
