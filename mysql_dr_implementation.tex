@@ -5,9 +5,10 @@
 \geometry{margin=1in}
 \usepackage{hyperref}
 \usepackage{enumitem}
+\usepackage{xcolor}
 
-\title{Implementation Plan: MySQL DR (Click \& Pleniged)}
-\author{Disaster Recovery Project Team}
+\title{Implementation Plan: MySQL DR (Double-Instance Architecture)}
+\author{Disaster Recovery Project Team — BNM}
 \date{\today}
 
 \begin{document}
@@ -15,62 +16,50 @@
 \maketitle
 
 \section{Overview}
-This document outlines the step-by-step implementation for the Disaster Recovery (DR) architecture concerning the \textbf{Click} and \textbf{Pleniged} MySQL environments. It breaks down the prerequisites, current infrastructure, and executable tasks suitable for Jira import.
+This document outlines the step-by-step implementation for the \textbf{Double-Instance} Disaster Recovery (DR) architecture. In this design, both \textbf{Click} and \textbf{Pleniged} databases are replicated to both Zone 2 and Zone 3 servers using isolated Docker containers on different ports.
 
-\section{What We Have}
-\textbf{Production Environment (Zone 0):}
+\section{Infrastructure Layout}
 \begin{itemize}
-    \item \textbf{Click}: MySQL 8.0 running on Ubuntu Linux (32 GB RAM, 16 vCPUs, DB Size: 0.1 GB).
-    \item \textbf{Pleniged DB}: MySQL 8.0 running on Windows (32 GB RAM, 16 vCPUs, DB Size: $\sim$32 GB).
-    \item \textbf{Pleniged FS}: File system containing images and PDFs ($\sim$4 TB).
-    \item \textbf{Monitoring}: Observability tools including Prometheus and Grafana.
-\end{itemize}
-
-\section{What We Need}
-\textbf{Disaster Recovery Environment (Target):}
-\begin{itemize}
-    \item \textbf{DR VMs}: Allocation of target virtual machines mirroring production specs (Ubuntu for Click, Windows for Pleniged).
-    \item \textbf{Network rules}: Firewall configurations allowing TCP 3306 (MySQL) and SSH/Rsync (Port 22/TCP).
-    \item \textbf{Deployment Software}: Percona XtraBackup (for binary hot backups) and Rsync (for Pleniged file system sync).
-    \item \textbf{Replication}: MySQL Semi-Synchronous replication enabling Primary to DR syncing.
+    \item \textbf{Zone 2 (Primary DR)}:
+        \begin{itemize}
+            \item \texttt{mysql-click} container on Port 3306 (Semi-Sync).
+            \item \texttt{mysql-pleniged} container on Port 3307 (Semi-Sync).
+        \end{itemize}
+    \item \textbf{Zone 3 (Standby DR)}:
+        \begin{itemize}
+            \item \texttt{mysql-click} container on Port 3306 (Async).
+            \item \texttt{mysql-pleniged} container on Port 3307 (Async).
+        \end{itemize}
 \end{itemize}
 
 \section{Jira Epics and Tasks}
-Here is the granular breakdown of tasks that can be bulk-imported into Jira for the engineering team.
 
-\subsection{Epic 1: DR Infrastructure Preparation}
+\subsection{Epic 1: DR Infrastructure Preparation (Multi-Container)}
 \begin{itemize}[label=$\square$]
-    \item \textbf{Task 1.1}: Provision DR Virtual Machine for \textbf{Click} (Ubuntu Linux, 32 GB RAM, 16 vCPUs). (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 1.2}: Provision DR Virtual Machine for \textbf{Pleniged} (Windows, 32 GB RAM, 16 vCPUs). (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 1.3}: Configure Network and Firewall to allow TCP 3306 (MySQL) from Primary to DR VMs. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 1.4}: Configure Network and Firewall to allow SSH/Rsync traffic for Pleniged FS. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
+    \item \textbf{Task 1.1}: Provision Ubuntu 22.04 servers for Zone 2 and Zone 3.
+    \item \textbf{Task 1.2}: Install Docker and Docker-Compose on both DR zones.
+    \item \textbf{Task 1.3}: Configure firewall rules for Ports 3306 and 3307 across all zones.
 \end{itemize}
 
-\subsection{Epic 2: Click Environment DR Setup (Ubuntu/MySQL)}
+\subsection{Epic 2: Click Replication Setup}
 \begin{itemize}[label=$\square$]
-    \item \textbf{Task 2.1}: Install MySQL 8.0 on the Click DR virtual machine. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 2.2}: Install Percona XtraBackup on Click Primary and DR VMs. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 2.3}: Execute preliminary full backup on Primary using XtraBackup and restore on DR VM. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 2.4}: Configure and enable MySQL Semi-Synchronous Replication from Primary to DR. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 2.5}: Verify Replication status, sync gaps, and replication delay (RPO check). (Assignee: Ahmed Abd Dayem Ahmed Bouha)
+    \item \textbf{Task 2.1}: Deploy \texttt{mysql-click} container on Zone 2 and Zone 3.
+    \item \textbf{Task 2.2}: Enable Semi-Sync replication from Source to \textbf{Zone 2 :3306}.
+    \item \textbf{Task 2.3}: Enable Async replication from Source to \textbf{Zone 3 :3306}.
 \end{itemize}
 
-\subsection{Epic 3: Pleniged Environment DR Setup (Windows/MySQL)}
+\subsection{Epic 3: Pleniged Replication Setup}
 \begin{itemize}[label=$\square$]
-    \item \textbf{Task 3.1}: Install MySQL 8.0 on the Pleniged DR virtual machine. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 3.2}: Configure Percona XtraBackup (or verified Windows-compatible tool) on Pleniged Primary. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 3.3}: Perform initial database backup from Primary and restore to Pleniged DR. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 3.4}: Configure and enable MySQL Semi-Synchronous Replication from Primary to DR. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 3.5}: Set up scheduled nightly Rsync job for the Pleniged FS (4 TB). (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 3.6}: Verify replication status and Rsync nighttime job completion logs. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
+    \item \textbf{Task 3.1}: Deploy \texttt{mysql-pleniged} container on Zone 2 and Zone 3 (Port 3307).
+    \item \textbf{Task 3.2}: Enable Semi-Sync replication from Source to \textbf{Zone 2 :3307}.
+    \item \textbf{Task 3.3}: Enable Async replication from Source to \textbf{Zone 3 :3307}.
 \end{itemize}
 
-\subsection{Epic 4: Testing \& Handover}
+\subsection{Epic 4: Monitoring \& Observability}
 \begin{itemize}[label=$\square$]
-    \item \textbf{Task 4.1}: Perform a DR failover and fallback test for the Click environment. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 4.2}: Perform a DR failover and fallback test for the Pleniged database and File System. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 4.3}: Integrate DR VMs and replication status into Prometheus and Grafana alerting. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
-    \item \textbf{Task 4.4}: Conduct final review, secure sign-off from Team Lead, and update internal runbooks. (Assignee: Ahmed Abd Dayem Ahmed Bouha)
+    \item \textbf{Task 4.1}: Deploy \texttt{mysqld\_exporter} for Port 3306 (Listen on 9104).
+    \item \textbf{Task 4.2}: Deploy \texttt{mysqld\_exporter} for Port 3307 (Listen on 9105).
+    \item \textbf{Task 4.3}: Update Prometheus config on Zone 1 to scrape all 4 targets.
 \end{itemize}
 
 \end{document}

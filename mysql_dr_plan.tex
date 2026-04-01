@@ -161,11 +161,11 @@ Aucune stratégie de réplication ou de reprise après sinistre n'existe actuell
 
 \begin{infobox}[Lecture du Schéma]
 \begin{itemize}[noitemsep]
-  \item \textcolor{bnmgreen}{\textbf{Ligne verte :}} Réplication synchrone (RPO = 0).
-  \item \textcolor{bnmwarning}{\textbf{Ligne orange :}} Réplication asynchrone (RPO $<$ 5 s).
-  \item \textbf{VM2 (Click)} et \textbf{VM3 (Pleniged)} : systèmes MySQL en Zone 0 à protéger.
-  \item \textbf{Zone 2} : Centre secondaire même ville, basculement semi-automatique.
-  \item \textbf{Zone 3} : Site distant géo-séparé, activation manuelle.
+  \item \textcolor{bnmgreen}{\textbf{Ligne verte :}} Réplication Semi-Synchrone (RPO = 0) vers Zone 2.
+  \item \textcolor{bnmwarning}{\textbf{Ligne orange :}} Réplication Asynchrone (RPO $\approx$ 0) vers Zone 3.
+  \item \textbf{Architecture Double-Instance} : Zone 2 et Zone 3 hébergent chacune Click (:3306) et Pleniged (:3307).
+  \item \textbf{Zone 2} : Centre secondaire (Hot Standby), réplication semi-synchrone.
+  \item \textbf{Zone 3} : Centre tertiaire (Warm Standby), réplication asynchrone parallèle.
 \end{itemize}
 \end{infobox}
 
@@ -198,17 +198,15 @@ Pleniged FS & VM3 & Windows Server & — & $\sim$4 TB \\
 \renewcommand{\arraystretch}{1.4}
 \begin{tabular}{|>{\bfseries}l|l|l|l|}
 \hline
-\rowcolor{bnmblue}\textcolor{white}{Système} & \textcolor{white}{Réplication} & \textcolor{white}{Backup} & \textcolor{white}{Protocole} \\
+\rowcolor{bnmblue}\textcolor{white}{Conteneur} & \textcolor{white}{Site Source} & \textcolor{white}{Site DR} & \textcolor{white}{Port DR} \\
 \hline
-Click & MySQL Semi-Sync & Percona XtraBackup + BinLogs & TCP 3306 \\
+mysql-click & 192.168.1.241 & Zone 2 / Zone 3 & TCP 3306 \\
 \hline
 \rowcolor{bnmlightgray}
-Pleniged DB & MySQL Semi-Sync & Percona XtraBackup + BinLogs & TCP 3306 \\
-\hline
-Pleniged FS & DRBD Block Sync & rsync nocturne & TCP 7788 / SSH \\
+mysql-pleniged & 10.168.2.34 & Zone 2 / Zone 3 & TCP 3307 \\
 \hline
 \end{tabular}
-\caption{Stack DR par système MySQL}
+\caption{Allocation des ports pour l'architecture Double-Instance}
 \end{table}
 
 %% ══════════════════════════════════════════════════════════════════════════════
@@ -239,11 +237,10 @@ Pleniged FS & $<$ 24 h & $<$ 24 h & rsync nocturne vers Zone 2 \\
 
 \begin{infobox}[Prérequis Infrastructure]
 \begin{enumerate}[noitemsep]
-  \item \textbf{VMs DR (Zone 2)} : 2 machines virtuelles provisionnées (Ubuntu pour Click, Windows pour Pleniged).
-  \item \textbf{Règles réseau} : Ouverture TCP 3306 (MySQL) entre Zone 0 et Zone 2.
-  \item \textbf{Règles réseau FS} : Ouverture TCP 7788 (DRBD) et SSH/22 pour rsync.
-  \item \textbf{Logiciels} : Percona XtraBackup, rsync, DRBD (linux) installés sur les nœuds.
-  \item \textbf{MySQL 8.0} installé et configuré sur chaque VM DR (même version que production).
+  \item \textbf{VMs DR (Zone 2 \& 3)} : Serveurs Ubuntu 22.04 avec Docker et Docker-Compose.
+  \item \textbf{Règles réseau} : Ouverture TCP 3306 (Click) et TCP 3307 (Pleniged) entre Zones.
+  \item \textbf{Isolation} : Utilisation de volumes Docker séparés pour Click et Pleniged.
+  \item \textbf{Monitoring} : Installation de mysqld\_exporter sur les ports 9104 et 9105.
 \end{enumerate}
 \end{infobox}
 

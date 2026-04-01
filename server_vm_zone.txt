@@ -1,23 +1,31 @@
+INVENTAIRE DES SERVEURS — PROJET DR MYSQL BNM
+-------------------------------------------
 
+ZONE 1 — MONITORING (Prometheus, Grafana, Alertmanager)
+- IP : 192.168.1.65
+- VM : monotordr-virtual-machine
+- User : monotordr / pwd: [PASSWORD]
+- Rôle : Centraliser les métriques des 4 instances MySQL.
 
-monotordr@monotordr-virtual-machine:zone 1 (Zone 1 — Monitoring : Prometheus, Grafana, alertes — observabilité uniquement this si for monitering )
-  192.168.1.65
-  user: monotordr
-  password: [PASSWORD]
+ZONE 2 — PRIMARY DR (Click & Pleniged)
+- IP : 192.168.1.66
+- VM : primbackupdr-virtual-machine
+- User : primbackupdr / pwd: [PASSWORD]
+- Services :
+  * MySQL Click    : Port 3306 (Semi-Sync)
+  * MySQL Pleniged : Port 3307 (Semi-Sync)
 
-(même ville) primlary and secondary but very far from each other or on diffnntert sever local 
-  primbackupdr@primbackupdr-virtual-machine:zone 2
-    192.168.1.66
-    user: primbackupdr
-    password: [PASSWORD]
-  secbackupdr@secbackupdr-virtual-machine:zone 3
-    192.168.1.64
-    user: secbackupdr
-    password: [PASSWORD]
+ZONE 3 — STANDBY DR (Click & Pleniged)
+- IP : 192.168.1.64
+- VM : secbackupdr-virtual-machine
+- User : secbackupdr / pwd: [PASSWORD]
+- Services :
+  * MySQL Click    : Port 3306 (Asynchrone)
+  * MySQL Pleniged : Port 3307 (Asynchrone)
 
-remote dr Zone 4 we will use it later 
+SOURCES DE PRODUCTION
+- Click    : 192.168.1.241 (Ubuntu)
+- Pleniged : 10.168.2.34  (Windows 10)
 
-
-Descrption about the two databsa mysql (pelniged and click )
-for pelniged his database is on machine physical windows 10 address : [10.168.2.34] we have only database test it we will use it for now  
-for click his database is on machine  ubuntu  address : [192.168.1.241] we have two database on this machine one for test  and one for production we will now  use test database . 
+ZONE 4 — REMOTE DR
+- Statut : TBD (Géo-séparé)

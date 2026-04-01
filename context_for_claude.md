@@ -1,57 +1,38 @@
-# Project Context for Claude
+# Project Context for Claude (Updated Architecture)
 
-Hello Claude! I am working on the **Disaster Recovery (DR) MySQL Implementation for Banque Nationale de Mauritanie (BNM)**. Here is a comprehensive overview of the project, architecture, and current state to give you full context for our session.
+Hello Claude! I am working on the **Disaster Recovery (DR) MySQL Implementation for Banque Nationale de Mauritanie (BNM)**. Here is the updated architecture for our project.
 
 ## 📋 1. Project Description
-This project implements a complete **Disaster Recovery (DR)** architecture for the critical MySQL databases at BNM:
-- **Click** — Mobile Payment System (Ubuntu Linux, `192.168.1.241`)
-- **Pleniged** — Document Management System (Windows 10, `10.168.2.34`)
+We are implementing a **Double-Instance (Double-Conteneur)** DR architecture. Instead of dedicating one zone to one project, both **Zone 2** and **Zone 3** will now host BOTH **Click** and **Pleniged** databases.
 
-**Goal:** In the event of a major failure (server, network, or data center crash), we must be able to automatically switch to a secondary site in under **2 hours (RTO < 2h)** with almost zero data loss (**RPO ≈ 0**). This is achieved using MySQL Semi-Synchronous Replication (native on Prod zones, Docker on DR zones) across several zones.
+- **Click** — Port 3306 (Ubuntu Source: `192.168.1.241`)
+- **Pleniged** — Port 3307 (Windows Source: `10.168.2.34`)
+
+**Goal:** RTO < 2h and RPO ≈ 0 using a hybrid Semi-Sync/Async approach.
 
 ## 🗺️ 2. Architecture & Zones
 
-The infrastructure is split into several network zones:
+| Zone | IP Address | Role | MySQL Containers |
+|------|------------|------|-----------------|
+| **Zone 1** | `192.168.1.65` | 🔍 Monitoring | ❌ No |
+| **Zone 2** | `192.168.1.66` | 🟢 **Primary DR** | Click (:3306) & Pleniged (:3307) |
+| **Zone 3** | `192.168.1.64` | 🟡 **Standby DR** | Click (:3306) & Pleniged (:3307) |
 
-| Zone | IP Address | Server Name | Role | MySQL Installed |
-|------|------------|-------------|------|-----------------|
-| **Zone 1** | `192.168.1.65` | `monotordr` | 🔍 **Monitoring** (Prometheus & Grafana) | ❌ No |
-| **Zone 2** | `192.168.1.66` | `primbackupdr` | 🟢 **DR Primary** | ✅ Yes (Docker) |
-| **Zone 3** | `192.168.1.64` | `secbackupdr` | 🟡 **DR Standby** | ✅ Yes (Docker) |
-| **Zone 4** | *TBD* | *TBD* | 🔴 **Remote DR (Geo-separated)** | ⏳ Later |
-| **Prod 1** | `192.168.1.241`| `Click` (Ubuntu) | 📤 **Source Production** | ✅ Yes (Native) |
-| **Prod 2** | `10.168.2.34` | `Pleniged` (Windows)|📤 **Source Production** | ✅ Yes (Native) |
+### Replication Strategy
+1.  **Source ➡️ Zone 2**: **Semi-Synchronous** (High Data Integrity).
+2.  **Source ➡️ Zone 3**: **Asynchronous** Parallel (Performance & Redundancy).
 
-### Replication Data Flow
+## 📂 3. Documentation Suite
+All files have been updated to reflect this port-based isolation:
+- `mysql_docker_guide.md`: Multi-container `docker-compose.yml` config.
+- `03_start_replication_guide.md`: Parallel replication commands.
+- `05_monitoring_guide.md`: Dual `mysqld_exporter` per VM (Ports 9104 & 9105).
+- `task.md`: Current progress tracker for Click and Pleniged.
 
-```text
-Click Source (server-id=10)    ──Semi-Sync TCP 3306──▶  Zone 2 DR (server-id=2)
-Pleniged Source (server-id=20) ──Semi-Sync TCP 3306──▶  Zone 3 DR (server-id=3)
-Zone 2 DR (Primary)            ──Semi-Sync TCP 3306──▶  Zone 3 DR (Standby)
-```
-*(Zone 4 will receive asynchronous replication later)*
-
-## 📂 3. Available Documentation / File Tracker
-
-My current directory contains the following guides. Feel free to ask me to provide the contents of any specific file if you need granular details:
-
-1. `README.md` : High-level overview of the project, including team members, IP addresses, and firewall requirements.
-2. `mysql_docker_guide.md` : Step-by-step guide for bringing up MySQL containers on Zone 2 & Zone 3 (Primary/Standby DR).
-3. `machines_source_guide.md` : Step-by-step guide for configuring Native MySQL replication on the production source machines (Click and Pleniged).
-4. `03_start_replication_guide.md` : How to initialize replication from sources to DR zones.
-5. `04_validation_replication_guide.md` : Details for validating that replication is running correctly (`SHOW SLAVE STATUS`).
-6. `05_monitoring_guide.md` : Installation and configuration of Prometheus, Grafana, and `mysqld_exporter` on Zone 1.
-7. `06_failover_test_guide.md` : Runbook for simulating a disaster and promoting a standby node.
-8. `main.tex` / `mysql_dr_plan.tex` : Formal LaTeX project documentation and implementation plans (in French).
-9. `server_vm_zone.txt` : Server IPs and credential inventories.
-
-## 🛠️ 4. Technical Details
-
-- **MySQL Version:** 8.0 (Containerized via Docker on DR zones, Native on Prod zones)
-- **Replication Type:** Semi-Synchronous (`semisync_master`/`semisync_slave`) + GTID-based replication (`gtid_mode=ON`).
-- **Monitoring Architecture:** `mysqld_exporter` via Prometheus, visualized in Grafana.
-- **Failover / Runbook:** Stop slave, reset slave, disable read-only mode, redirect traffic.
+## 🛠️ 4. Status
+- **Click**: Replication is UP and VALIDATED on both Zone 2 and Zone 3.
+- **Pleniged**: Ready for setup on port 3307.
+- **Monitoring**: Ready for deployment with the new dual-exporter config.
 
 ---
-
-**Claude, based on this context, I am ready for your assistance. I will now give you my specific request...**
+**Claude, the architecture is now fully documented. Please use this "Double-Instance" context for all future requests.**
