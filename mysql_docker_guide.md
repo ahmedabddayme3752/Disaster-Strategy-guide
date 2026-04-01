@@ -1,176 +1,146 @@
-# Guide d'Implémentation MySQL DR avec Docker
+# Guide d'Implémentation MySQL DR avec Docker (Double-Conteneur)
 
 ## Architecture des Zones
 
 | Zone | Serveur | IP | Rôle |
 |------|---------|-----|------|
-| **Zone 1** | `monotordr` | `192.168.1.65` | 🔍 **Monitoring uniquement** — Prometheus, Grafana, Alertes |
-| **Zone 2** | `primbackupdr` | `192.168.1.66` | 🟢 **MySQL Primary** — Production (même ville) |
-| **Zone 3** | `secbackupdr` | `192.168.1.64` | 🟡 **MySQL Standby** — Secondaire (même ville, serveur différent) |
-| **Zone 4** | TBD | TBD | 🔴 **Remote DR** — Géo-séparé (à utiliser plus tard) |
-
-> ⚠️ **Important :** Zone 1 ne reçoit PAS MySQL. C'est uniquement le serveur de monitoring. MySQL est installé sur Zone 2 (Primary) et Zone 3 (Standby).
+| **Zone 1** | `monotordr` | `192.168.1.65` | 🔍 **Monitoring** — Gère la surveillance de Click et Pleniged |
+| **Zone 2** | `primbackupdr` | `192.168.1.66` | 🟢 **Primary DR** — Contient Click (:3306) et Pleniged (:3307) |
+| **Zone 3** | `secbackupdr` | `192.168.1.64` | 🟡 **Standby DR** — Contient Click (:3306) et Pleniged (:3307) |
 
 ---
 
-## Étape 0 — Prérequis communs (Zone 2 et Zone 3 uniquement)
+## Étape 0 — Nettoyage et Prérequis (Zone 2 et Zone 3)
 
-Sur **Zone 2 (`primbackupdr`, 192.168.1.66`)** ET **Zone 3 (`secbackupdr`, `192.168.1.64`)** :
+Exécutez ceci sur les serveurs **Zone 2** ET **Zone 3** :
 
 ```bash
-# Installer Docker et Docker Compose
-sudo apt update
-sudo apt install -y docker.io docker-compose
-
-# Créer l'arborescence pour MySQL
-mkdir -p ~/mysql-dr/{data,config}
+# 1. Arrêter l'ancienne configuration
 cd ~/mysql-dr
-```
+sudo docker-compose down
 
-Créez également le fichier `docker-compose.yml` sur les deux serveurs :
-```yaml
-version: '3.8'
+# 2. Créer la nouvelle structure de dossiers isolée
+mkdir -p ~/mysql-dr/click/{data,config}
+mkdir -p ~/mysql-dr/pleniged/{data,config}
+
+# 3. Créer le nouveau docker-compose.yml (Double Instance)
+cat <<EOF > ~/mysql-dr/docker-compose.yml
+version: '3.3'
 services:
-  mysql:
+  mysql-click:
     image: mysql:8.0
-    container_name: mysql-server
+    container_name: mysql-click
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: "RootPassword123!"
     ports:
       - "3306:3306"
     volumes:
-      - ./data:/var/lib/mysql
-      - ./config/my.cnf:/etc/mysql/my.cnf
+      - ./click/data:/var/lib/mysql
+      - ./click/config/my.cnf:/etc/mysql/my.cnf
+
+  mysql-pleniged:
+    image: mysql:8.0
+    container_name: mysql-pleniged
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "RootPassword123!"
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./pleniged/data:/var/lib/mysql
+      - ./pleniged/config/my.cnf:/etc/mysql/my.cnf
+EOF
 ```
 
 ---
 
-## Étape 1 — Zone 2 (Primary) : `primbackupdr@192.168.1.66`
+## Étape 1 — Configuration Zone 2 (Primary DR)
 
-### A. Fichier de configuration `~/mysql-dr/config/my.cnf`
+### A. Fichiers de configuration `my.cnf`
 
+**Pour Click (`~/mysql-dr/click/config/my.cnf`)** :
 ```ini
 [mysqld]
-server-id = 2
+server-id = 21
 log_bin = /var/lib/mysql/mysql-bin.log
 binlog_format = ROW
 gtid_mode = ON
 enforce_gtid_consistency = ON
 ```
 
-> **Note :** Les plugins `semisync` sont installés dynamiquement via SQL après le démarrage (voir étape C).
+**Pour Pleniged (`~/mysql-dr/pleniged/config/my.cnf`)** :
+```ini
+[mysqld]
+server-id = 22
+log_bin = /var/lib/mysql/mysql-bin.log
+binlog_format = ROW
+gtid_mode = ON
+enforce_gtid_consistency = ON
+```
 
-### B. Démarrer le conteneur
-
+### B. Démarrer les deux conteneurs
 ```bash
 cd ~/mysql-dr
 sudo docker-compose up -d
-
-# Attendez ~30 secondes que MySQL s'initialise
 sleep 30
-sudo docker ps   # Vérifiez que le statut est "Up" et non "Restarting"
+sudo docker ps # Vous devez voir mysql-click (3306) et mysql-pleniged (3307)
 ```
 
-### C. Créer l'utilisateur de réplication + activer le plugin semi-sync
-
+### C. Initialisation des plugins (Semi-Sync)
 ```bash
-sudo docker exec -it mysql-server mysql -u root -pRootPassword123! -e "
--- Créer l'utilisateur de réplication
+# Pour Click
+sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "
 CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!';
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replicator'@'%';
-
--- Activer la réplication semi-synchrone coté Primary
 INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so';
 SET PERSIST rpl_semi_sync_master_enabled = 1;
-SET PERSIST rpl_semi_sync_master_timeout = 10000;
+"
 
-FLUSH PRIVILEGES;
-SHOW MASTER STATUS;
+# Pour Pleniged
+sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "
+CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPass2026!';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'replicator'@'%';
+INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so';
+SET PERSIST rpl_semi_sync_master_enabled = 1;
 "
 ```
 
 ---
 
-## Étape 2 — Zone 3 (Standby) : `secbackupdr@192.168.1.64`
+## Étape 2 — Configuration Zone 3 (Standby DR)
 
-### A. Fichier de configuration `~/mysql-dr/config/my.cnf`
+### A. Fichiers de configuration `my.cnf`
 
+**Pour Click (`~/mysql-dr/click/config/my.cnf`)** :
 ```ini
 [mysqld]
-server-id = 3
+server-id = 31
 relay-log = /var/lib/mysql/relay-bin.log
 read_only = ON
 gtid_mode = ON
 enforce_gtid_consistency = ON
 ```
 
-### B. Démarrer le conteneur
+**Pour Pleniged (`~/mysql-dr/pleniged/config/my.cnf`)** :
+```ini
+[mysqld]
+server-id = 32
+relay-log = /var/lib/mysql/relay-bin.log
+read_only = ON
+gtid_mode = ON
+enforce_gtid_consistency = ON
+```
 
+### B. Démarrer les deux conteneurs
 ```bash
 cd ~/mysql-dr
 sudo docker-compose up -d
-
-# Attendez ~30 secondes
 sleep 30
-sudo docker ps   # Vérifiez que le statut est "Up"
 ```
-
-### C. Activer le plugin semi-sync + démarrer la réplication vers Zone 2
-
-```bash
-sudo docker exec -it mysql-server mysql -u root -pRootPassword123! -e "
--- Activer la réplication semi-synchrone coté Standby
-INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
-SET PERSIST rpl_semi_sync_slave_enabled = 1;
-
--- Pointer vers le Primary (Zone 2)
-CHANGE MASTER TO
-  MASTER_HOST='192.168.1.66',
-  MASTER_USER='replicator',
-  MASTER_PASSWORD='ReplicaPass2026!',
-  MASTER_AUTO_POSITION=1,
-  MASTER_SSL=0,
-  GET_MASTER_PUBLIC_KEY=1;
-
-START SLAVE;
-SHOW SLAVE STATUS\G
-"
-```
-
-> ✅ **Vérifiez que vous voyez :**
-> - `Slave_IO_Running: Yes`
-> - `Slave_SQL_Running: Yes`
-> - `Seconds_Behind_Master: 0`
 
 ---
 
-## Étape 3 — Zone 1 (Monitoring) : `monotordr@192.168.1.65`
+## Étape 3 — Suite du Projet
 
-Zone 1 n'accueille **pas** MySQL. Elle est dédiée au monitoring de la réplication sur Zone 2 et Zone 3.
-
-> ➡️ **Veuillez consulter le fichier `05_monitoring_guide.md`** pour installer Prometheus et Grafana proprement via Docker sur cette zone. N'utilisez pas `apt install prometheus`, qui peut causer des conflits d'utilisateurs.
-
----
-
-## Zone 4 — Remote DR (À venir)
-
-Zone 4 sera configurée ultérieurement comme site de DR géo-séparé. La réplication sera de type **asynchrone** depuis la Zone 2 (Primary) ou Zone 3 (Standby). La configuration sera ajoutée à ce guide dès que l'IP et les accès sont disponibles.
-
----
-
-## Résumé des flux de réplication
-
-```
-Zone 2 (Primary, 192.168.1.66)
-    |
-    | Semi-Sync Replication (TCP 3306)
-    |
-    v
-Zone 3 (Standby, 192.168.1.64)
-
-Zone 1 (Monitoring, 192.168.1.65):
-    Surveille Zone 2 et Zone 3 via mysqld_exporter (port 9104)
-
-Zone 4 (Remote DR): À configurer — réplication Async depuis Zone 2
-```
+Dès que les conteneurs sont lancés, passez au guide **`03_start_replication_guide.md`** pour connecter les sources.
