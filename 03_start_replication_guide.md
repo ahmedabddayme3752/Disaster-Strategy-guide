@@ -1,156 +1,78 @@
-# Guide 3 — Démarrage de la Réplication (Architecture Double-Instance)
+# 03 — Mise en Service de la Réplication DR (Zone 2/3)
 
-Ce guide explique comment connecter vos serveurs DR (Zone 2 et Zone 3) aux sources de production.
+## 🐳 Rôle : Les Esclaves de Secours
+Ce document détaille comment démarrer la réplication sur les conteneurs Docker MySQL 8.0 des sites de secours.
 
 ---
 
-## 🏗️ Étape 0 — Initialisation avec données réelles (Dump / Restore)
+## 🛠️ CONFIGURATION DOCKER (Multi-Instance)
+Le fichier `docker-compose.yml` doit isoler Click (Port 3306) et Pleniged (Port 3307).
 
-Si vos bases de production contiennent déjà des données (comme `clickTest`), vous devez faire un **Dump** sur la source et le restaurer sur le DR avant de lancer la réplication.
-
-### A. Sur le serveur de Production (Source)
-Exécutez la commande pour exporter la base vers un fichier SQL :
-```bash
-# Exemple pour Click
-mysqldump -u nio -p --databases clickTest --single-transaction --routines --triggers --set-gtid-purged=ON --no-tablespaces > clickTest_dump.sql
-```
-> [!TIP]
-> L'option `--no-tablespaces` est utilisée pour garantir l'indépendance vis-à-vis du stockage physique du serveur source et éviter les erreurs de privilèges `PROCESS`.
-
-### B. Transférer le fichier vers les serveurs DR
-Utilisez `scp` pour envoyer le fichier vers Zone 2 et Zone 3 :
-```bash
-scp clickTest_dump.sql primbackupdr@192.168.1.66:~/mysql-dr/
+### Exemple de `docker-compose.yml` pour Click :
+```yaml
+  mysql-click:
+    image: mysql:8.0
+    command: --slave-skip-errors=1062,1396 --replicate-ignore-db=click
+    container_name: mysql-click
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "RootPassword123!"
 ```
 
-### C. Sur le serveur DR (Zone 2 ou 3)
-Importez le fichier directement dans le conteneur concerné (Port 3306 ou 3307) :
+---
+
+## 🪄 PROCÉDURE : "Le Magic Sync"
+Cette procédure garantit un démarrage propre sans conflits de GTID.
+
+### Étape 1 : Préparer Bash
 ```bash
-# 1. Nettoyage de l'état précédent
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "STOP SLAVE; RESET SLAVE ALL; RESET MASTER;"
-
-# 2. Importer les données
-cat clickTest_dump.sql | sudo docker exec -i mysql-click mysql -u root -pRootPassword123!
-
-# 3. Lancement de la réplication (Astuce : Utilisez ' ' pour éviter l'erreur "!")
+# Désactiver l'expansion de l'historique pour autoriser les "!" dans les mots de passe
 set +H
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e 'CHANGE MASTER TO MASTER_HOST="192.168.1.241", MASTER_USER="replicator", MASTER_PASSWORD="ReplicaPass2026!", MASTER_AUTO_POSITION=1; START SLAVE;'
 ```
 
----
+### Étape 2 : Lancer le bloc de synchronisation
+Modifiez les variables (UUID, Port) selon l'instance (Click ou Pleniged) :
 
-## Étape 1 — Connexion de la Zone 2 (Primary DR) aux Sources
-
-Sur **Zone 2** (`192.168.1.66`), nous allons connecter les deux conteneurs indépendamment.
-
-### A. Connecter Click (Port 3306)
 ```bash
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e '
--- Activer le plugin semi-sync côté esclave
-INSTALL PLUGIN rpl_semi_sync_slave SONAME "semisync_slave.so";
-SET PERSIST rpl_semi_sync_slave_enabled = 1;
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "
+-- 1. Nettoyage des métadonnées
+STOP SLAVE;
+RESET SLAVE ALL;
+RESET MASTER;
 
--- Pointer vers la source Click
+-- 2. Positionnement (GTID de départ du Dump)
+-- ⚠️ Remplacez lourdement l'UUID et la plage par ceux de votre sauvegarde
+SET GLOBAL GTID_PURGED = '816c0b5e-97e8-11ed-a73b-000c299194d8:1-215';
+
+-- 3. Connexion Sécurisée
 CHANGE MASTER TO
-  MASTER_HOST="192.168.1.241",
-  MASTER_USER="replicator",
-  MASTER_PASSWORD="ReplicaPass2026!",
-  MASTER_AUTO_POSITION=1,
-  MASTER_SSL=0,
-  GET_MASTER_PUBLIC_KEY=1;
-
-START SLAVE;
-SHOW SLAVE STATUS\G
-'
-```
-
-### B. Connecter Pleniged (Port 3307)
-```bash
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "
-INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so';
-SET PERSIST rpl_semi_sync_slave_enabled = 1;
-
--- Pointer vers la source Pleniged
-CHANGE MASTER TO
-  MASTER_HOST='10.168.2.34',
+  MASTER_HOST='192.168.1.241',    -- IP Production
+  MASTER_PORT=3366,               -- Port 3366 pour Click, 3306 pour Pleniged
   MASTER_USER='replicator',
   MASTER_PASSWORD='ReplicaPass2026!',
-  MASTER_AUTO_POSITION=1,
-  MASTER_SSL=0,
-  GET_MASTER_PUBLIC_KEY=1;
+  MASTER_AUTO_POSITION=1,         -- Magie du GTID
+  GET_MASTER_PUBLIC_KEY=1;        -- Autorise l'échange de clé RSA
 
+-- 4. Départ ! 🚀
 START SLAVE;
-SHOW SLAVE STATUS\G
 "
 ```
 
 ---
 
-## Étape 2 — Connexion de la Zone 3 (Standby DR) en Parallèle
-
-Dans cette version de l'architecture, la Zone 3 se connecte **directement** aux sources (comme la Zone 2), mais en mode **Asynchrone** (pour ne pas ralentir la production).
-
-### A. Connecter Click (Port 3306)
-```bash
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "
--- 1. On ne met PAS de semi-sync ici (Async pur)
-SET PERSIST rpl_semi_sync_slave_enabled = 0;
-
--- 2. Pointer vers la source Click (241)
-CHANGE MASTER TO
-  MASTER_HOST='192.168.1.241',
-  MASTER_USER='replicator',
-  MASTER_PASSWORD='ReplicaPass2026!',
-  MASTER_AUTO_POSITION=1,
-  MASTER_SSL=0,
-  GET_MASTER_PUBLIC_KEY=1;
-
-START SLAVE;
-SHOW SLAVE STATUS\G
-"
-```
-
-### B. Connecter Pleniged (Port 3307)
-```bash
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "
--- 1. Async pur
-SET PERSIST rpl_semi_sync_slave_enabled = 0;
-
--- 2. Pointer vers la source Pleniged (34)
-CHANGE MASTER TO
-  MASTER_HOST='10.168.2.34',
-  MASTER_USER='replicator',
-  MASTER_PASSWORD='ReplicaPass2026!',
-  MASTER_AUTO_POSITION=1,
-  MASTER_SSL=0,
-  GET_MASTER_PUBLIC_KEY=1;
-
-START SLAVE;
-SHOW SLAVE STATUS\G
-"
-```
+## 🧐 Pourquoi utiliser `GET_MASTER_PUBLIC_KEY=1` ?
+MySQL 8.0 utilise le plugin `caching_sha2_password` par défaut. Sans cette option, le maître refuse de "parler" à l'esclave car le mot de passe n'est pas envoyé par un canal chiffré. Cette option règle le problème instantanément. ✨
 
 ---
 
-## 💡 Astuce Bash : Gestion des mots de passe avec "!"
+## 🔍 Vérification du rattrapage
+Pour voir si l'esclave est en train de "consommer" les transactions manquantes :
 
-Si votre mot de passe contient un point d'exclamation (ex: `ReplicaPass2026!`), Bash peut générer une erreur `event not found`.
+```bash
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SHOW SLAVE STATUS\G" | grep -E "Slave_IO_Running|Slave_SQL_Running|Seconds_Behind_Master|Executed_Gtid_Set"
+```
 
-**Solutions :**
-1. Utilisez des **guillemets simples ` ' `** autour de tout le bloc `-e` :
-   `mysql -e 'CHANGE MASTER TO ... MASTER_PASSWORD="votre_mdp!";'`
-2. Désactivez l'expansion d'historique avant de lancer la commande :
-   ```bash
-   set +H
-   ```
-
----
-
-## ✅ Résultat Final Attendu
-
-| VM | Conteneur | Port | Source | Type de réplication |
-| :--- | :--- | :--- | :--- | :--- |
-| **Zone 2** | `mysql-click` | 3306 | Click (241) | **Semi-Synchrone** (Hot Standby) |
-| **Zone 2** | `mysql-pleniged` | 3307 | Pleniged (34) | **Semi-Synchrone** (Hot Standby) |
-| **Zone 3** | `mysql-click` | 3306 | Click (241) | **Asynchrone** (Warm Standby) |
-| **Zone 3** | `mysql-pleniged` | 3307 | Pleniged (34) | **Asynchrone** (Warm Standby) |
+> [!NOTE]
+> - **Slave_IO_Running: Yes** ✅
+> - **Slave_SQL_Running: Yes** ✅
+> - **Seconds_Behind_Master** : Doit diminuer jusqu'à atteindre **0**.

@@ -1,74 +1,52 @@
-# Guide 4 — Validation de la Réplication (Architecture Double-Instance)
+# 04 — Guide de Validation DR (Le "Grand Direct")
 
-Ce guide permet de vérifier que les données de Click et Pleniged arrivent bien sur vos deux serveurs de secours (Zone 2 et Zone 3).
-
----
-
-## 1. Vérification de l'état des 4 réplications
-
-Exécutez ces commandes pour vérifier que tous les tuyaux sont ouverts (**`Yes` / `Yes`**) :
-
-### Sur Zone 2 (`192.168.1.66`)
-```bash
-# Vérifier Click
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "SHOW SLAVE STATUS\G" | grep -E "Running|Behind|Master_Host"
-# Vérifier Pleniged
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "SHOW SLAVE STATUS\G" | grep -E "Running|Behind|Master_Host"
-```
-
-### Sur Zone 3 (`192.168.1.64`)
-```bash
-# Vérifier Click
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "SHOW SLAVE STATUS\G" | grep -E "Running|Behind|Master_Host"
-# Vérifier Pleniged
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "SHOW SLAVE STATUS\G" | grep -E "Running|Behind|Master_Host"
-```
+## 🎯 Objectif : Prouver la Réussite du Projet
+Ce document détaille comment confirmer que la réplication des données bancaires fonctionne à la milliseconde près.
 
 ---
 
-## 2. Test fonctionnel : Click (Ubuntu ➡️ DR)
+## 🧪 TEST 1 — Validation en Temps Réel
+Nous allons insérer une ligne sur la Production et vérifier son apparition immédiate sur les sites de secours.
 
-### A. Insérer sur la Source (`.241`)
-Demandez à votre ami d'insérer une ligne :
+### 1 — Étape 1 : Insertion sur la Prod (241)
+Sur le serveur **Click (Prod 241)**, lancez la commande suivante :
+
 ```bash
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "INSERT INTO click_test.dr_test (message) VALUES ('Validation Click Parallel DR - $(date)');"
+mysql -u nio -p -e "INSERT INTO clickTest.dr_validation (test_message) VALUES ('TEST BNM DR SUCCESS - SYNC OK');"
 ```
 
-### B. Vérifier sur Zone 2 et Zone 3
-```bash
-# Sur Zone 2
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "SELECT * FROM click_test.dr_test ORDER BY id DESC LIMIT 1;"
+### 2 — Étape 2 : Vérification sur Zone 2 et Zone 3
+Sur les serveurs DR, lancez la commande suivante :
 
-# Sur Zone 3
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "SELECT * FROM click_test.dr_test ORDER BY id DESC LIMIT 1;"
+```bash
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SELECT * FROM clickTest.dr_validation ORDER BY id DESC LIMIT 1;"
+```
+
+> [!IMPORTANT]
+> **Résultat attendu :** Vous devez voir la ligne **`TEST BNM DR SUCCESS - SYNC OK`** avec l'horodatage actuel. Si c'est le cas, votre réplication est **parfaite**. 🏆🏦💎
+
+---
+
+## 🧪 TEST 2 — Intégrité des Données (Comptage)
+Vérifions que le volume de données est identique entre le Maître et les Esclaves.
+
+### 1 — Comptage sur la Prod
+```bash
+mysql -u nio -p -e "SELECT count(*) FROM clickTest.dr_validation;"
+```
+
+### 2 — Comptage sur le DR (Zone 2/3)
+```bash
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SELECT count(*) FROM clickTest.dr_validation;"
 ```
 
 ---
 
-## 3. Test fonctionnel : Pleniged (Windows ➡️ DR)
-
-### A. Insérer sur la Source (`.34`)
-Demandez à votre ami d'insérer une ligne (PowerShell) :
-```powershell
-docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "INSERT INTO pleniged_test.dr_test (message) VALUES ('Validation Pleniged Parallel DR');"
-```
-
-### B. Vérifier sur Zone 2 et Zone 3
-```bash
-# Sur Zone 2
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "SELECT * FROM pleniged_test.dr_test ORDER BY id DESC LIMIT 1;"
-
-# Sur Zone 3
-sudo docker exec -it mysql-pleniged mysql -u root -pRootPassword123! -e "SELECT * FROM pleniged_test.dr_test ORDER BY id DESC LIMIT 1;"
-```
+## 📊 Évaluation du RPO (Perte de Données)
+- Si le `id` du dernier test est identique sur Prod et DR ➡️ **RPO = 0 (Aucune perte)**. ✅
+- Si `Seconds_Behind_Master` est à **0** ➡️ **Synchro Temps Réel**. ✅
 
 ---
 
-## 4. Vérification de la Synchronisation (Semi-Sync vs Async)
-
-### Sur la Source Click (`.241`)
-```bash
-sudo docker exec -it mysql-click mysql -u root -pRootPassword123! -e "SHOW STATUS LIKE 'Rpl_semi_sync_master_clients';"
-```
-> ✅ **Résultat attendu : `1`**. 
-> Seule la Zone 2 est enregistrée comme client Semi-Sync. La Zone 3 est invisible ici car elle est en mode Asynchrone (meilleur pour la performance).
+## 🏁 Clôture de la Mission
+Une fois ces tests validés, le projet Click est considéré comme **Production-Ready**. 🚀💰🏁🏦

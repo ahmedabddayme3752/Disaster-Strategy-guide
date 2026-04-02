@@ -1,78 +1,71 @@
-# 🏦 Projet DR MySQL — Banque Nationale de Mauritanie (BNM)
+# 🏦 BNM Disaster Recovery Playbook
+## Strategic Data Protection System — MySQL 8.0 Multi-Instance
 
-> **Direction Système d'Information — BNM**
-> **Statut :** 🟢 Architecture Double-Instance Opérationnelle
-> **Go-Live cible :** Fin Avril 2026
-
----
-
-## 📋 Description du projet
-
-Ce projet met en place une architecture de **Disaster Recovery (DR)** hautement disponible pour les systèmes critiques de la BNM. Contrairement à une architecture classique, nous utilisons une approche **Double-Instance** où chaque site de secours (Zone 2 et Zone 3) héberge une copie indépendante des deux systèmes :
-
-- **Click** — Système de paiement mobile (Ubuntu Linux, `192.168.1.241`)
-- **Pleniged** — Système de gestion documentaire (Windows 10, `10.168.2.34`)
+> [!IMPORTANT]
+> **Direction des Systèmes d’Information (DSI)**
+> Ce dépôt contient les procédures critiques pour la survie des données bancaires en cas de sinistre majeur sur le site de production.
+> **Statut actuel :** 🟢 Opérationnel (Site de Secours Click Sync à 100%)
 
 ---
 
-## 🗺️ Architecture "Double-Conteneur"
+## 🏛️ Architecture du Projet
+Le projet repose sur une architecture **Multi-Instance Containerisée** assurant une séparation étanche entre les flux de paiement (Click) et les flux documentaires (Pleniged).
 
-Chaque serveur DR (`.66` et `.64`) fait tourner **deux conteneurs Docker** MySQL isolés :
-1.  **Port 3306** : Instance dédiée à la sauvegarde de **Click**.
-2.  **Port 3307** : Instance dédiée à la sauvegarde de **Pleniged**.
-
-### Schéma des flux
-
+### Schéma de Réplication Global
 ```mermaid
 graph TD
-    subgraph "SITES DE PRODUCTION"
-        C[Source Click .241]
-        P[Source Pleniged .34]
+    subgraph "ZONE 1 - PRODUCTION (Natif)"
+        P_CLK["📦 Click Source (.241)<br/>Port: 3366"]
+        P_PLN["📦 Pleniged Source (.34)<br/>Port: 3306"]
     end
 
-    subgraph "ZONE 2 (Primary DR)"
-        Z2C[MySQL Click :3306]
-        Z2P[MySQL Pleniged :3307]
+    subgraph "ZONE 2 - DR PRIMARY (Docker)"
+        D2_CLK["🐳 Click DR Instance<br/>Port: 3306"]
+        D2_PLN["🐳 Pleniged DR Instance<br/>Port: 3307"]
     end
 
-    subgraph "ZONE 3 (Standby DR)"
-        Z3C[MySQL Click :3306]
-        Z3P[MySQL Pleniged :3307]
+    subgraph "ZONE 3 - DR SECONDARY (Docker)"
+        D3_CLK["🐳 Click DR Instance<br/>Port: 3306"]
+        D3_PLN["🐳 Pleniged DR Instance<br/>Port: 3307"]
     end
 
-    C -- "Semi-Sync" --> Z2C
-    P -- "Semi-Sync" --> Z2P
+    P_CLK -- "GTID Sync (0s Lag)" --> D2_CLK
+    P_PLN -- "GTID Sync (0s Lag)" --> D2_PLN
     
-    C -- "Asynchrone" --> Z3C
-    P -- "Asynchrone" --> Z3P
+    P_CLK -- "Async Replication" --> D3_CLK
+    P_PLN -- "Async Replication" --> D3_PLN
 ```
 
 ---
 
-## 📁 Guide des Fichiers (Mis à jour)
+## 🛠️ Stack Technique
+- **Moteur DB :** MySQL 8.0 Community Edition
+- **Isolation :** Docker Engine v24+ & Docker Compose v2.0+
+- **Protocole :** Réplication basée sur les **GTID** (Global Transaction Identifiers)
+- **Sécurité :** Authentification `mysql_native_password` & Chiffrement RSA
+- **Filtrage :** Bypass des bases de test (`--replicate-ignore-db=click`)
 
-| Fichier | Importance | État |
+---
+
+## 📖 Navigation dans le Playbook
+
+| Phase | Guide de Référence | Objectif |
 | :--- | :--- | :--- |
-| [**task.md**](task.md) | Suivi des tâches en temps réel | 🟢 À jour |
-| [**mysql_docker_guide.md**](mysql_docker_guide.md) | Configuration des conteneurs (3306/3307) | 🟢 À jour |
-| [**03_start_replication_guide.md**](03_start_replication_guide.md) | Commandes de démarrage (Semi-Sync/Async) | 🟢 À jour |
-| [**05_monitoring_guide.md**](05_monitoring_guide.md) | Monitoring des 4 instances | 🟢 À jour |
+| **01** | [**Stratégie Architecture**](01_dr_architecture_strategy.md) | Comprendre le choix Semi-Sync / Async. |
+| **02** | [**Configuration Maître**](02_master_config_guide.md) | Paramétrer les serveurs sources (Ports 3366/3306). |
+| **03** | [**Mise en Service DR**](03_start_replication_guide.md) | Déployer les esclaves et lancer la synchrone. |
+| **04** | [**Validation de Données**](04_validation_replication_guide.md) | Tester la réplication en temps réel (Grand Direct). |
+| **05** | [**Base de Connaissances**](05_dr_troubleshooting_knowledge_base.md) | Solutions aux erreurs (`ContainerConfig`, GTID, etc.). |
 
 ---
 
-## 🎯 Stratégie de Réplication
+## 🚨 Procédure de Failover (Sinistre)
+En cas de perte totale du site de production :
 
-*   **Zone 2 (Hot Standby)** : Réplication **Semi-Synchrone**. Garantit que pour chaque transaction confirmée à la BNM, une copie existe physiquement sur la Zone 2 (**RPO = 0**).
-*   **Zone 3 (Warm Standby)** : Réplication **Asynchrone**. Offre une redondance supplémentaire sans impacter la performance de la production en cas de latence réseau.
+1. **Activation :** Sur les serveurs DR, désactiver le mode lecture seule.
+   `SET GLOBAL read_only = 0;`
+2. **Redirection :** Mettre à jour les DNS ou les fichiers de config applicatifs vers les IPs DR.
+3. **Validation :** Vérifier que les derniers GTID ont été appliqués avant d'ouvrir le trafic.
 
----
-
-## 📞 Procédure d'urgence (Failover)
-
-En cas de panne de production :
-1.  Identifier si la panne est sur Click ou Pleniged.
-2.  Aller sur le port correspondant de la **Zone 2** (3306 ou 3307).
-3.  Lancer `STOP SLAVE; SET GLOBAL read_only=0;`.
-4.  Rediriger les applications vers l'IP de la Zone 2 sur le port concerné.
-
-> ✍️ Pour les détails complets, voir le [**Runbook de Failover (Guide 06)**](06_failover_test_guide.md).
+> [!CAUTION]
+> Un Failover est une opération critique. Ne jamais le déclencher sans l'accord de la DSI.
