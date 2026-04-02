@@ -1,5 +1,5 @@
 # 🏦 BNM Disaster Recovery Playbook
-## Strategic Data Protection System — MySQL 8.0 Multi-Instance
+## Strategic Data Protection System — MySQL 8.0 & 5.7 Multi-Instance
 
 > [!IMPORTANT]
 > **Direction des Systèmes d’Information (DSI)**
@@ -39,7 +39,7 @@ graph TD
 ---
 
 ## 🛠️ Stack Technique
-- **Moteur DB :** MySQL 8.0 Community Edition
+- **Moteurs DB :** MySQL 8.0 (Click) et MySQL 5.7 (Pleniged)
 - **Isolation :** Docker Engine v24+ & Docker Compose v2.0+
 - **Protocole :** Réplication basée sur les **GTID** (Global Transaction Identifiers)
 - **Sécurité :** Authentification `mysql_native_password` & Chiffrement RSA

@@ -13,7 +13,7 @@ ZONE 2 — PRIMARY DR (Click & Pleniged)
 - User : primbackupdr / pwd: [PASSWORD]
 - Services :
   * MySQL Click    : Port 3306 (Semi-Sync)
-  * MySQL Pleniged : Port 3307 (Semi-Sync)
+  * MySQL Pleniged : Port 3307 (Asynchrone - Windows Laragon non compatible)
 
 ZONE 3 — STANDBY DR (Click & Pleniged)
 - IP : 192.168.1.64
