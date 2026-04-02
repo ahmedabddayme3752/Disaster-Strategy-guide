@@ -2,6 +2,9 @@
 
 ## 🧠 Mémoire Technique du Projet BNM DR
 
+> [!TIP]
+> Cherchez l'erreur exacte dans ce document avant de faire des recherches. Toutes les erreurs rencontrées durant le projet BNM sont documentées ici avec leur solution testée et validée.
+
 Ce document recense toutes les erreurs rencontrées durant l'implémentation du DR et leurs solutions. Il constitue la mémoire collective du projet pour les futurs administrateurs.
 
 ---
