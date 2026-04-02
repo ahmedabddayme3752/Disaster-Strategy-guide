@@ -1,52 +1,124 @@
-# 04 — Guide de Validation DR (Le "Grand Direct")
+# 04 — Guide de Validation de la Réplication
 
-## 🎯 Objectif : Prouver la Réussite du Projet
-Ce document détaille comment confirmer que la réplication des données bancaires fonctionne à la milliseconde près.
+## 🎯 Objectif : Prouver que le DR Fonctionne
+
+Ce guide décrit comment valider que les données de la production sont bien répliquées sur les sites de secours.
 
 ---
 
-## 🧪 TEST 1 — Validation en Temps Réel
-Nous allons insérer une ligne sur la Production et vérifier son apparition immédiate sur les sites de secours.
+## 🧪 TEST 1 — Le "Grand Direct" (Validation Temps Réel)
 
-### 1 — Étape 1 : Insertion sur la Prod (241)
-Sur le serveur **Click (Prod 241)**, lancez la commande suivante :
+Ce test prouve que toute modification sur la production apparaît **instantanément** sur les sites DR.
+
+### Sur le Serveur Click Production (241)
 
 ```bash
-mysql -u nio -p -e "INSERT INTO clickTest.dr_validation (test_message) VALUES ('TEST BNM DR SUCCESS - SYNC OK');"
+# Connexion au MySQL de production
+mysql -u nio -p -e "
+-- Insérer un message de test horodaté
+INSERT INTO clickTest.dr_validation (test_message)
+VALUES ('BNM SUCCESS - ZONE 2 SYNC OK');
+"
 ```
 
-### 2 — Étape 2 : Vérification sur Zone 2 et Zone 3
-Sur les serveurs DR, lancez la commande suivante :
+### Immédiatement sur Zone 2 (primbackupdr)
 
 ```bash
-sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SELECT * FROM clickTest.dr_validation ORDER BY id DESC LIMIT 1;"
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "
+-- Vérifier que le message est arrivé
+SELECT * FROM clickTest.dr_validation ORDER BY id DESC LIMIT 1;
+"
+```
+
+**Résultat attendu :**
+```
++----+------------------------------+---------------------+
+| id | test_message                 | horodatage          |
++----+------------------------------+---------------------+
+|  3 | BNM SUCCESS - ZONE 2 SYNC OK | 2026-04-02 12:19:29 |
++----+------------------------------+---------------------+
 ```
 
 > [!IMPORTANT]
-> **Résultat attendu :** Vous devez voir la ligne **`TEST BNM DR SUCCESS - SYNC OK`** avec l'horodatage actuel. Si c'est le cas, votre réplication est **parfaite**. 🏆🏦💎
+> Si ce message apparaît sur Zone 2 en moins d'1 seconde après l'insertion sur la Prod, votre **RPO = 0** est validé. C'est la preuve que votre DR est opérationnel. 🏆
 
 ---
 
 ## 🧪 TEST 2 — Intégrité des Données (Comptage)
-Vérifions que le volume de données est identique entre le Maître et les Esclaves.
 
-### 1 — Comptage sur la Prod
+Ce test vérifie que **toutes** les données sont présentes sur les sites DR.
+
+### Sur Production :
 ```bash
-mysql -u nio -p -e "SELECT count(*) FROM clickTest.dr_validation;"
+mysql -u nio -p -e "SELECT COUNT(*) as total_prod FROM clickTest.dr_validation;"
 ```
 
-### 2 — Comptage sur le DR (Zone 2/3)
+### Sur Zone 2 et Zone 3 :
 ```bash
-sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SELECT count(*) FROM clickTest.dr_validation;"
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e \
+  "SELECT COUNT(*) as total_dr FROM clickTest.dr_validation;"
+```
+
+> [!NOTE]
+> Les deux totaux **doivent être identiques**. Si le total DR est inférieur, il y a un retard de réplication.
+
+---
+
+## 🧪 TEST 3 — Vérification de la Santé de la Réplication
+
+### Commande de surveillance complète :
+```bash
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "SHOW SLAVE STATUS\G" \
+  | grep -E "Slave_IO_Running|Slave_SQL_Running|Seconds_Behind_Master|Executed_Gtid_Set|Last_IO_Error|Last_SQL_Error"
+```
+
+### Interprétation :
+
+| Champ | Valeur Attendue | Signification |
+|:---|:---|:---|
+| `Slave_IO_Running` | `Yes` | Connexion réseau avec la Prod établie |
+| `Slave_SQL_Running` | `Yes` | Les transactions s'appliquent sur l'esclave |
+| `Seconds_Behind_Master` | `0` | Synchronisé en temps réel |
+| `Last_IO_Error` | *(vide)* | Aucune erreur de connexion |
+| `Last_SQL_Error` | *(vide)* | Aucune erreur d'application |
+
+---
+
+## 🧪 TEST 4 — Vérification des Tables et Données
+
+Ce test montre toutes les tables présentes sur les sites DR.
+
+```bash
+sudo docker exec -it mysql-click mysql -u root -p'RootPassword123!' -e "
+-- Liste de toutes les bases de données
+SHOW DATABASES;
+
+-- Tables dans clickTest
+USE clickTest;
+SHOW TABLES;
+
+-- Aperçu des données dans la table de validation
+SELECT * FROM dr_validation ORDER BY id DESC LIMIT 5;
+
+-- Statistiques globales
+SELECT
+  table_name AS 'Table',
+  table_rows AS 'Lignes (approx.)',
+  ROUND(data_length/1024/1024, 2) AS 'Taille (MB)'
+FROM information_schema.tables
+WHERE table_schema = 'clickTest';
+"
 ```
 
 ---
 
-## 📊 Évaluation du RPO (Perte de Données)
-- Si le `id` du dernier test est identique sur Prod et DR ➡️ **RPO = 0 (Aucune perte)**. ✅
-- Si `Seconds_Behind_Master` est à **0** ➡️ **Synchro Temps Réel**. ✅
+## 📊 Grille d'Évaluation du DR
 
----
-
-## 🏁 Clôture de la Mission
-Une fois ces tests validés, le projet Click est considéré comme **Production-Ready**. 🚀💰🏁🏦
+| Critère | Poids | Résultat |
+|:---|:---|:---|
+| `Slave_IO_Running: Yes` | 🔴 Critique | ✅ Validé |
+| `Slave_SQL_Running: Yes` | 🔴 Critique | ✅ Validé |
+| `Seconds_Behind_Master: 0` | 🟠 Important | ✅ Validé |
+| Test "Grand Direct" réussi | 🔴 Critique | ✅ Validé |
+| Comptage identique Prod/DR | 🟠 Important | ✅ Validé |
+| Dashboard Grafana actif | 🟡 Recommandé | ✅ Validé |

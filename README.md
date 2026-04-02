@@ -1,39 +1,56 @@
 # 🏦 BNM Disaster Recovery Playbook
-## Strategic Data Protection System — MySQL 8.0 & 5.7 Multi-Instance
+<<<<<<< HEAD
+## Banque Nationale de Mauritanie — Plan de Continuité des Systèmes Critiques
 
 > [!IMPORTANT]
-> **Direction des Systèmes d’Information (DSI)**
-> Ce dépôt contient les procédures critiques pour la survie des données bancaires en cas de sinistre majeur sur le site de production.
-> **Statut actuel :** 🟢 Opérationnel (Site de Secours Click Sync à 100%)
+> **Document Officiel — Direction des Systèmes d'Information (DSI)**
+> Ce dépôt contient l'ensemble des procédures, configurations et guides techniques
+> pour la mise en place et l'exploitation du système de **Disaster Recovery (DR)**
+> des bases de données critiques de la BNM.
+>
+> **Statut :** 🟢 Click DR (94 tables) Opérationnel — Monitoring 7/7 Zones Actif
+> **Go-Live cible :** Fin Avril 2026
 
 ---
 
-## 🏛️ Architecture du Projet
-Le projet repose sur une architecture **Multi-Instance Containerisée** assurant une séparation étanche entre les flux de paiement (Click) et les flux documentaires (Pleniged).
+## 🎯 Objectif du Projet
 
-### Schéma de Réplication Global
-```mermaid
-graph TD
-    subgraph "ZONE 1 - PRODUCTION (Natif)"
-        P_CLK["📦 Click Source (.241)<br/>Port: 3366"]
-        P_PLN["📦 Pleniged Source (.34)<br/>Port: 3306"]
-    end
+La BNM opère deux systèmes critiques dont la perte de données serait catastrophique :
 
-    subgraph "ZONE 2 - DR PRIMARY (Docker)"
-        D2_CLK["🐳 Click DR Instance<br/>Port: 3306"]
-        D2_PLN["🐳 Pleniged DR Instance<br/>Port: 3307"]
-    end
+| Système | Rôle | Serveur Source |
+|:---|:---|:---|
+| **Click** | Paiement mobile et transactions financières | Ubuntu Linux — `192.168.1.241:3366` |
+| **Pleniged** | Gestion documentaire et archivage | Windows 10 — `10.168.2.34:3306` |
 
-    subgraph "ZONE 3 - DR SECONDARY (Docker)"
-        D3_CLK["🐳 Click DR Instance<br/>Port: 3306"]
-        D3_PLN["🐳 Pleniged DR Instance<br/>Port: 3307"]
-    end
+Ce projet garantit que **si le site de production tombe** (panne, sinistre, cyberattaque), les données bancaires sont **immédiatement disponibles** sur un site de secours.
 
-    P_CLK -- "GTID Sync (0s Lag)" --> D2_CLK
-    P_PLN -- "GTID Sync (0s Lag)" --> D2_PLN
-    
-    P_CLK -- "Async Replication" --> D3_CLK
-    P_PLN -- "Async Replication" --> D3_PLN
+---
+
+## 🏗️ Architecture Multi-Zones (Architecture Finale)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  ZONE 1 — MONITORING (192.168.1.65)                                  │
+│  🐳 Prometheus (9090) + Grafana (3000) + Alertmanager (9093)         │
+│  Dashboard : http://192.168.1.65:3000                                │
+└──────────────┬──────────────────────────────────────────────────────-┘
+               │ Scrape métriques (toutes les 10s)
+    ┌──────────┼──────────────────────┐
+    ▼          ▼                      ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│ ZONE 0 — PROD    │  │ ZONE 2 — DR PRI  │  │ ZONE 3 — DR SEC  │
+│ 192.168.1.241    │  │ 192.168.1.66     │  │ 192.168.1.64     │
+│                  │  │                  │  │                  │
+│ ⚙️  MySQL Natif  │  │ 🐳 mysql-click   │  │ 🐳 mysql-click   │
+│    Port: 3366    │  │    Port: 3306    │  │    Port: 3306    │
+│                  │  │ 🐳 mysql-plenigd │  │ 🐳 mysql-plenigd │
+│ 🐳 exporter      │  │    Port: 3307    │  │    Port: 3307    │
+│    Port: 9104    │  │ 📡 export: 9104  │  │ 📡 export: 9104  │
+│ (--network=host) │  │ 📡 export: 9105  │  │ 📡 export: 9105  │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │                     ▲                      ▲
+         │    Réplication GTID │                      │
+         └─────────────────────┴──────────────────────┘
 ```
 
 ---
@@ -47,25 +64,50 @@ graph TD
 
 ---
 
-## 📖 Navigation dans le Playbook
+## 📂 Bases de Données Protégées (Mirroring Total)
 
-| Phase | Guide de Référence | Objectif |
-| :--- | :--- | :--- |
-| **01** | [**Stratégie Architecture**](01_dr_architecture_strategy.md) | Comprendre le choix Semi-Sync / Async. |
-| **02** | [**Configuration Maître**](02_master_config_guide.md) | Paramétrer les serveurs sources (Ports 3366/3306). |
-| **03** | [**Mise en Service DR**](03_start_replication_guide.md) | Déployer les esclaves et lancer la synchrone. |
-| **04** | [**Validation de Données**](04_validation_replication_guide.md) | Tester la réplication en temps réel (Grand Direct). |
-| **05** | [**Base de Connaissances**](05_dr_troubleshooting_knowledge_base.md) | Solutions aux erreurs (`ContainerConfig`, GTID, etc.). |
+Nous répliquons l'intégralité des 4 bases critiques identifiées sur la Production :
+
+| Base | Description | Système |
+|:---|:---|:---|
+| **`click`** | **Production Réelle Click** | Click (MySQL 8.0) |
+| **`clickTest`** | Copie de test Production | Click (MySQL 8.0) |
+| **`clickTestPub`** | Base de test Publique | Click (MySQL 8.0) |
+| **`plenesgi_ged`**| **Production Documentaire** | Pleniged (MySQL 5.7) |
 
 ---
 
-## 🚨 Procédure de Failover (Sinistre)
-En cas de perte totale du site de production :
+## 📊 État Actuel du Monitoring (7/7 Cibles Actives)
 
-1. **Activation :** Sur les serveurs DR, désactiver le mode lecture seule.
-   `SET GLOBAL read_only = 0;`
-2. **Redirection :** Mettre à jour les DNS ou les fichiers de config applicatifs vers les IPs DR.
-3. **Validation :** Vérifier que les derniers GTID ont été appliqués avant d'ouvrir le trafic.
+| Job Prometheus | Cible | Statut | Rôle |
+|:---|:---|:---:|:---|
+| `BNM_PROD_CLICK_ZONE0` | `192.168.1.241:9104` | 🟢 UP | Source (Production) |
+| `BNM_DR_CLICK_ZONE2` | `192.168.1.66:9104` | 🟢 UP | DR Click Primaire |
+| `BNM_DR_CLICK_ZONE3` | `192.168.1.64:9104` | 🟢 UP | DR Click Secondaire |
+| `BNM_DR_PLENIGED_ZONE2` | `192.168.1.66:9105` | 🟢 UP | DR Pleniged Primaire |
+| `BNM_DR_PLENIGED_ZONE3` | `192.168.1.64:9105` | 🟢 UP | DR Pleniged Secondaire |
 
-> [!CAUTION]
-> Un Failover est une opération critique. Ne jamais le déclencher sans l'accord de la DSI.
+---
+
+## 📖 Navigation dans le Playbook
+
+| # | Guide | Contenu | État |
+|:---|:---|:---|:---|
+| **01** | [Stratégie DR](01_dr_architecture_strategy.md) | Détails du GTID et RPO/RTO | ✅ |
+| **02** | [Config Maître](02_master_config_guide.md) | Port 3366, users, pare-feu | ✅ |
+| **03** | [Mise en Service DR](03_start_replication_guide.md) | Guide du Magic Sync v2 (Full Mirror) | ✅ |
+| **04** | [Validation](04_validation_replication_guide.md) | Procédures de test "Grand Direct" | ✅ |
+| **05** | [Troubleshooting](05_dr_troubleshooting_knowledge_base.md) | Base de connaissances des erreurs | ✅ |
+| **06** | [Monitoring](06_monitoring_guide.md) | Guide Prometheus/Grafana complet | ✅ |
+| **07** | [Guide Pleniged](pleniged_windows_dr_guide.md) | Configuration spécifique Windows 5.7 | ✅ |
+
+---
+
+## 🔐 Référence des Identifiants DR
+
+| Composant | Utilisateur | Mot de passe | Notes |
+|:---|:---|:---|:---|
+| MySQL Click DR (root) | root | RootPassword123! | Conteneurs Zone 2/3 |
+| MySQL Réplication | replicator | ReplicaPass2026! | Droits REPLICATION SLAVE |
+| MySQL Monitoring Zone 0 | monitor | MonitorPass2026! | Droits lecture seule |
+| Grafana | admin | GrafanaPass2026! | http://192.168.1.65:3000 |
