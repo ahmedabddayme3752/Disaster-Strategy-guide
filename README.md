@@ -7,7 +7,7 @@
 > pour la mise en place et l'exploitation du système de **Disaster Recovery (DR)**
 > des bases de données critiques de la BNM.
 >
-> **Statut :** 🟢 Click DR Opérationnel (94 tables, Lag = 0s) — 🟡 Pleniged DR En cours
+> **Statut :** 🟢 Click DR Opérationnel (94 tables, Lag = 0s) — 🟢 Pleniged DR Opérationnel (1303 Mo, Lag = 0s)
 > **Go-Live cible :** Fin Avril 2026
 
 ---
