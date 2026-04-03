@@ -108,6 +108,7 @@ Ce projet garantit que **si le site de production tombe** (panne, sinistre, cybe
 | **06** | [Monitoring](06_monitoring_guide.md) | Prometheus, Grafana, alertes |
 | **07** | [Infrastructure & Images Docker](07_infrastructure_docker_guide.md) | Détails de chaque serveur et conteneur |
 | **08** | [Utilisateurs & Accès](08_users_access_guide.md) | Tous les utilisateurs OS, MySQL, Grafana |
+| **09** | [🚨 Plan de Failover](09_failover_procedure.md) | Que faire si Zone 0 tombe + Bonnes pratiques |
 
 ---
 
