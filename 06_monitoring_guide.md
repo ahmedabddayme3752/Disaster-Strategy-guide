@@ -14,6 +14,7 @@ Ce guide explique le système de surveillance mis en place pour surveiller en te
 │  🐳 Prometheus (Port 9090)  ─── Collecte toutes les 10 secondes    │
 │  🐳 Grafana    (Port 3000)  ─── Dashboard temps réel               │
 │  🐳 Alertmanager (Port 9093) ── Alertes email/Slack                │
+│  🐳 Capteur Pleniged (9106) ─── Interroge Windows 10.168.2.34      │
 │                                                                     │
 │  Fichiers clés :                                                    │
 │  ~/monitoring/docker-compose.yml   ← Orchestration des conteneurs  │
@@ -112,6 +113,44 @@ curl http://localhost:9104/metrics | grep mysql_up
 
 ---
 
+## 🪟 Zone 0 — Capteur pour la Production Pleniged Windows (.34)
+
+> [!TIP]
+> **L'Astuce Brillante pour ton collègue** : Ne PAS installer de capteur sur la machine Windows !
+> On va utiliser Docker sur le serveur de Monitoring (Zone 1) pour interroger le Windows à distance.
+
+### 1. Sur le MySQL Windows (10.168.2.34) :
+Créer l'autorisation pour que le serveur de monitoring puisse lire les métriques.
+Dans le PowerShell Windows :
+```powershell
+C:\PLENISOFTS\bin\mysql\mysql-5.7.33-winx64\bin\mysql.exe -u root -p"RootBNM2026!" -e "CREATE USER 'monitor'@'192.168.1.65' IDENTIFIED BY 'MonitorPass2026!'; GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'monitor'@'192.168.1.65'; FLUSH PRIVILEGES;"
+```
+
+### 2. Sur la Zone 1 Monitoring (192.168.1.65) — Lancer le capteur distant :
+On crée les credentials :
+```bash
+cat > ~/monitoring/pleniged_windows.my.cnf << 'EOF'
+[client]
+user=monitor
+password=MonitorPass2026!
+host=10.168.2.34
+port=3306
+EOF
+chmod 644 ~/monitoring/pleniged_windows.my.cnf
+```
+On lance le capteur Docker (Port 9106) :
+```bash
+sudo docker run -d \
+  --name mysqld-exporter-pleniged-prod \
+  --restart always \
+  -p 9106:9104 \
+  -v ~/monitoring/pleniged_windows.my.cnf:/cfg/.my.cnf:ro \
+  prom/mysqld-exporter \
+  --config.my-cnf=/cfg/.my.cnf
+```
+
+---
+
 ## 🐳 Zones 2 et 3 — Capteurs Docker (Configuration)
 
 ### Fichiers de credentials :
@@ -187,6 +226,14 @@ scrape_configs:
           zone: 'Zone0'
           service: 'Click_Production'
 
+  # === ZONE 0 - PRODUCTION PLENIGED (WINDOWS) ===
+  - job_name: 'BNM_PROD_PLENIGED_ZONE0'
+    static_configs:
+      - targets: ['192.168.1.65:9106'] # Le capteur est hébergé localement sur Zone 1
+        labels:
+          zone: 'Zone0'
+          service: 'Pleniged_Production'
+
   # === ZONE 2 - DR PRIMARY ===
   - job_name: 'BNM_DR_CLICK_ZONE2'
     static_configs:
@@ -250,6 +297,7 @@ curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -E '"
 | Panneau | Type | Requête | Description |
 |:---|:---|:---|:---|
 | 🏦 Production Click | Stat | `mysql_up{job='BNM_PROD_CLICK_ZONE0'}` | Vert = UP, Rouge = DOWN |
+| 🏦 Production Pleniged | Stat | `mysql_up{job='BNM_PROD_PLENIGED_ZONE0'}` | Vert = UP, Rouge = DOWN |
 | 🟢 DR Click Zone 2 | Stat | `mysql_up{job='BNM_DR_CLICK_ZONE2'}` | Statut de l'esclave |
 | 🟢 DR Click Zone 3 | Stat | `mysql_up{job='BNM_DR_CLICK_ZONE3'}` | Statut de l'esclave |
 | 📄 DR Pleniged Zone 2 | Stat | `mysql_up{job='BNM_DR_PLENIGED_ZONE2'}` | Statut Pleniged |
