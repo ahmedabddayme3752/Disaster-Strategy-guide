@@ -70,11 +70,11 @@
 - [x] Configurer l'utilisateur `replicator` sur Pleniged Windows ✅
 - [x] Remplacer l'image Pleniged DR par `mysql:5.7` (Zone 2) ✅
 - [x] Importer le dump sur `mysql-pleniged` Zone 2 (Port 3307) ✅
-- [ ] Remplacer l'image Pleniged DR par `mysql:5.7` (Zone 3)
-- [ ] Importer le dump sur `mysql-pleniged` Zone 3 (Port 3307)
-- [ ] Configurer la réplication Pleniged ZONE 2 (Bloqué par routeur réseau)
-- [ ] Configurer la réplication Pleniged ZONE 3 (Bloqué par routeur réseau)
-- [ ] Valider `Seconds_Behind_Master: 0` sur Zone 2 et Zone 3
+- [x] Remplacer l'image Pleniged DR par `mysql:5.7` (Zone 3) ✅
+- [x] Importer le dump sur `mysql-pleniged` Zone 3 (Port 3307) ✅
+- [x] Configurer la réplication Pleniged ZONE 2 ✅ (Réseau ouvert)
+- [x] Configurer la réplication Pleniged ZONE 3 ✅ (Opérationnelle, Lag = 0s)
+- [x] Valider `Seconds_Behind_Master: 0` sur Zone 2 ✅ (1303 MB importés !)
 - [ ] Vérifier le Replication Lag Pleniged sur Grafana
 
 ---
